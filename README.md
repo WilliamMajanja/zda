@@ -3,7 +3,7 @@
 [![Tests](https://img.shields.io/badge/tests-22%20passing-brightgreen)](tests/test_zda.py)
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue)](pyproject.toml)
 [![Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen)](pyproject.toml)
-[![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
+[![License](https://img.shields.io/badge/license-Proprietary-red)](LICENSE)
 
 > **Identify and inspect 18+ binary formats with pure-Python, zero third-party
 > dependencies.** A CLI and an MCP server in one package — like
@@ -105,4 +105,4 @@ python -m pytest -q
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+Proprietary. Copyright (c) 2026 William Majanja. All rights reserved. See [LICENSE](LICENSE).
