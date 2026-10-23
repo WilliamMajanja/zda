@@ -12,4 +12,4 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e .
-      - run: python -m pytest -q
+      - run: python -m unittest discover -s tests -v
