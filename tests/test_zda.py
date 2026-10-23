@@ -20,6 +20,18 @@ from zda.registry import inspect_file, identify, list_formats  # noqa: E402
 HERE = Path(tempfile.gettempdir()) / "zda_fixtures"
 HERE.mkdir(exist_ok=True)
 
+def _ensure_elf():
+    import subprocess
+    src = HERE / "hello.c"
+    if not src.exists():
+        src.write_text("int main(void){return 0;}\n")
+    dst = HERE / "hello.elf"
+    if not dst.exists():
+        subprocess.run(["gcc", "-fno-plt", "-o", str(dst), str(src),
+                        "-Wl,-z,relro,-z,now"], check=True)
+    return str(dst)
+
+
 
 def _write(name, data):
     p = HERE / name
@@ -403,7 +415,7 @@ class RegistryTests(unittest.TestCase):
 class CliTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.elf = str(HERE / "hello.elf")
+        cls.elf = _ensure_elf()
 
     def test_identify_json(self):
         import subprocess
@@ -423,7 +435,7 @@ class CliTests(unittest.TestCase):
 class McpTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.elf = str(HERE / "hello.elf")
+        cls.elf = _ensure_elf()
 
     def test_tools_roundtrip(self):
         from zda.mcp import _dispatch
