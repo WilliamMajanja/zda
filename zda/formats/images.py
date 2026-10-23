@@ -74,6 +74,11 @@ class JpegFormat(Format):
         ins.add_limit("pixel data is not decoded; markers and header fields only")
         with open(path, "rb") as fh:
             data = fh.read()
+        if len(data) < 4:
+            ins.confidence = 0.5
+            ins.summary = "truncated JPEG"
+            ins.add_finding("header", ins.summary, evidence=buf[:4].hex(" ") if buf else "")
+            return ins
         o = 2
         sof = None
         markers = []
@@ -137,7 +142,12 @@ class GifFormat(Format):
         ins.add_limit("frame pixels are not decoded; header and block types only")
         with open(path, "rb") as fh:
             data = fh.read()
-        version = data[3:6].decode()
+        if len(data) < 13:
+            ins.confidence = 0.5
+            ins.summary = "truncated image"
+            ins.add_finding("header", ins.summary, evidence=buf[:16].hex(" ") if buf else "")
+            return ins
+        version = data[3:6].decode("latin-1", "replace")
         w, h, flags = struct.unpack("<HHB", data[6:11])
         gct = (flags >> 7) & 1
         ncolors = 2 ** ((flags & 7) + 1) if gct else 0
@@ -211,6 +221,11 @@ class WebPFormat(Format):
         ins.add_limit("pixel data is not decoded; container headers only")
         with open(path, "rb") as fh:
             data = fh.read()
+        if len(data) < 30:
+            ins.confidence = 0.5
+            ins.summary = "truncated WebP"
+            ins.add_finding("header", ins.summary, evidence=buf[:16].hex(" ") if buf else "")
+            return ins
         riff_size = struct.unpack("<I", data[4:8])[0]
         chunk = data[12:16]
         w = h = 0

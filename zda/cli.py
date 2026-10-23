@@ -7,6 +7,7 @@ from pathlib import Path
 
 from . import __version__
 from .registry import identify, inspect_file, list_formats
+from . import jsapp
 
 BANNER = r"""
   ╔═╗╦╔═╗╔╗╔╦  ╦  ╔═╗╦═╗╔╗╔╦╦╔╣╦ ╦
@@ -86,6 +87,22 @@ def cmd_list_formats(args):
     return 0
 
 
+def cmd_analyze_js(args):
+    from .jsapp import analyze
+    out = analyze(args.path)
+    if args.json:
+        _print(out)
+    else:
+        print("-" * 60)
+        print(f"js-app : {out.get('root', out.get('asar'))}")
+        print(f"files  : {out.get('file_count')}")
+        if "electron_boundaries" in out:
+            print("boundaries:", ", ".join(out["electron_boundaries"]))
+        if "imports" in out:
+            print("imports  :", ", ".join(out["imports"][:10]))
+        print("-" * 60)
+    return 0
+
 def cmd_mcp(args):
     from .mcp import serve
     return serve(args)
@@ -113,6 +130,11 @@ def build_parser():
     s.add_argument("--json", action="store_true")
     s.set_defaults(func=cmd_list_formats)
 
+    s = sub.add_parser("analyze-js", help="statically analyze a JS/Electron app directory or ASAR")
+    s.add_argument("path")
+    s.add_argument("--json", action="store_true", help="machine-readable output")
+    s.set_defaults(func=cmd_analyze_js)
+
     s = sub.add_parser("mcp", help="run as an MCP stdio server (-tools: zda_identify, zda_inspect, zda_list_formats)")
     s.set_defaults(func=cmd_mcp)
 
@@ -122,7 +144,7 @@ def build_parser():
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
-    if not getattr(args, "json", False):
+    if not getattr(args, "json", False) and getattr(args, "command", None) != "mcp":
         print(BANNER.replace("{v}", __version__))
     try:
         rc = args.func(args)

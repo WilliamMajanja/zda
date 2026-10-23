@@ -30,6 +30,11 @@ class JvmFormat(Format):
         ins.add_limit("constant-pool entries and member descriptors are not fully decoded; bytecode is not disassembled")
         with open(path, "rb") as fh:
             data = fh.read()
+        if len(data) < 10:
+            ins.confidence = 0.5
+            ins.summary = "truncated JVM class file"
+            ins.add_finding("header", ins.summary, evidence=buf[:10].hex(" ") if buf else "")
+            return ins
         minor, major = struct.unpack(">HH", data[4:8])
         java = _java_of(major)
         count = struct.unpack(">H", data[8:10])[0]

@@ -26,8 +26,13 @@ class PeFormat(Format):
         ins.add_limit("static inspection; no execution, no virtual translation; imports are read via the import table only")
         with open(path, "rb") as fh:
             data = fh.read()
+        if len(data) < 0x40:
+            ins.confidence = 0.5
+            ins.summary = "too short to be a PE (missing DOS header)"
+            ins.add_finding("header", ins.summary, evidence=buf[:16].hex(" ") if buf else "")
+            return ins
         e_lfanew = _u32le(data, 0x3C)
-        if e_lfanew >= len(data) or data[e_lfanew : e_lfanew + 4] != b"PE\0\0":
+        if e_lfanew + 4 > len(data) or data[e_lfanew : e_lfanew + 4] != b"PE\0\0":
             ins.confidence = 0.6
             ins.summary = "DOS MZ header found, but no PE\\0\\0 signature at e_lfanew"
             ins.add_finding("dos-header", "MZ signature; not a modern PE (or e_lfanew points elsewhere)",
@@ -74,7 +79,9 @@ class PeFormat(Format):
         if not nimp and b"MT" in data[:1024]:
             ins.add_finding("runtime", "possible MinGW/MSVC runtime hints absent — likely a .NET/managed or packed image")
         self._dotnet(ins, data, opt, bits)
+        self._clr_metadata(ins, data, opt, bits, section_table, nsec)
         self._authenticode(ins, data, opt, bits)
+        self._toolchain(ins, data)
         self._strings(ins, data)
         return ins
 
@@ -172,6 +179,60 @@ class PeFormat(Format):
             )
         else:
             ins.add_finding("authenticode", "not signed (empty certificate data directory)")
+
+    def _clr_metadata(self, ins, data, opt, bits, section_table, nsec):
+        if bits is None:
+            return
+        d = self._dir(data, opt, bits, 14)
+        if not (d and d[0]):
+            return
+        secs = []
+        for i in range(nsec):
+            base = section_table + i * 40
+            if base + 40 > len(data):
+                break
+            secs.append((
+                data[base:base + 8].split(b"\x00")[0].decode("latin-1"),
+                _u32le(data, base + 8), _u32le(data, base + 12),
+                _u32le(data, base + 16), _u32le(data, base + 20),
+            ))
+        fo = self._rva(secs, d[0])
+        if fo is None or fo + 16 > len(data):
+            return
+        meta_rva = _u32le(data, fo + 8)
+        meta_size = _u32le(data, fo + 12)
+        mo = self._rva(secs, meta_rva)
+        if mo is None or mo + 20 > len(data) or data[mo:mo + 4] != b"BSJB":
+            ins.add_finding("dotnet-meta", "CLR data directory present but metadata root not found")
+            return
+        verlen = _u32le(data, mo + 16)
+        if verlen > 256 or mo + 20 + verlen > len(data):
+            verlen = min(verlen, 256)
+        version = data[mo + 20 : mo + 20 + verlen].split(b"\x00")[0].decode("latin-1", "replace")
+        ins.add_finding("dotnet-meta", f"CLR metadata version: {version!r}")
+        off = mo + 20 + ((verlen + 3) // 4) * 4
+        if off + 4 > len(data):
+            return
+        nstreams = _u16le(data, off + 2)
+        o = off + 4
+        streams = []
+        for _ in range(min(nstreams, 16)):
+            if o + 8 > len(data):
+                break
+            soff = _u32le(data, o)
+            ssz = _u32le(data, o + 4)
+            o += 8
+            name = data[o:o + 32].split(b"\x00")[0].decode("latin-1", "replace")
+            o += ((len(name) + 1 + 3) // 4) * 4
+            streams.append(f"{name}({ssz})")
+        if streams:
+            ins.add_finding("dotnet-streams", f"{len(streams)} metadata stream(s): {', '.join(streams)}")
+
+    def _toolchain(self, ins, data):
+        low = data[: min(len(data), 1 << 20)].lower()
+        for needle, label in ((b"go1.", "Go"), (b"rustc", "Rust"), (b"gcc", "GCC")):
+            if needle in low:
+                ins.add_finding("toolchain", f"{label} toolchain marker present")
 
     def _strings(self, ins, data):
         names = [b"Microsoft", b"MFC", b"MSVCRT", b"KERNEL32", b"mscoree.dll"]

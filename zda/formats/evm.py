@@ -33,7 +33,7 @@ class EvmFormat(Format):
             return 0.55
         if len(buf) >= 8:
             try:
-                s = buf.decode("ascii")
+                s = bytes(buf).decode("ascii")
                 body = s.strip()
                 if body.startswith("0x"):
                     body = body[2:]
@@ -49,13 +49,13 @@ class EvmFormat(Format):
         ins.add_limit("constructor/runtime separation is not resolved here")
         with open(path, "rb") as fh:
             data = fh.read()
-        if data.lstrip().startswith(b"0x"):
-            data = bytes.fromhex(data.strip()[2:].decode())
-        elif all(ch in b"0123456789abcdefABCDEF" for ch in data.strip()[:64]) and size:
-            try:
+        try:
+            if data.lstrip().startswith(b"0x"):
+                data = bytes.fromhex(data.strip()[2:].decode("ascii"))
+            elif all(ch in b"0123456789abcdefABCDEF" for ch in data.strip()[:64]) and size:
                 data = bytes.fromhex(data.decode("ascii"))
-            except (UnicodeDecodeError, binascii.Error):
-                pass
+        except (UnicodeDecodeError, binascii.Error, ValueError):
+            pass
         ops = []
         i = 0
         push4s, jumpdests, counts = [], 0, {}

@@ -20,6 +20,11 @@ class BeamFormat(Format):
         ins.add_limit("structure inspection only; BEAM bytecode is not decoded to a readable form here")
         with open(path, "rb") as fh:
             data = fh.read()
+        if len(buf) < 12:
+            ins.confidence = 0.5
+            ins.summary = "truncated BEAM header"
+            ins.add_finding("header", ins.summary, evidence=buf[:12].hex(" ") if buf else "")
+            return ins
         form1len = struct.unpack(">I", buf[4:8])[0]
         ins.summary = f"Erlang BEAM file, FOR1 size {form1len}, {size} bytes"
         ins.add_finding("iff", ins.summary, evidence=buf[:12].hex(" "))

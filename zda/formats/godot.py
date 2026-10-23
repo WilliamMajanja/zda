@@ -22,25 +22,30 @@ class GodotPckFormat(Format):
         ins.add_limit("file contents are not extracted; only the header and directory are read")
         with open(path, "rb") as fh:
             data = fh.read()
-        magic = buf[:4]
+        magic = data[:4] if len(data) >= 4 else buf[:4]
         o = 4
+        if len(data) < 24:
+            ins.confidence = 0.5
+            ins.summary = "truncated Godot PCK header"
+            ins.add_finding("header", ins.summary, evidence=buf[:16].hex(" ") if buf else "")
+            return ins
         if magic == b"CPDG":
             ins.confidence = 0.6
             ins.add_finding("magic", "reversed 'GDPC' magic — may be renamed/reordered pack")
-        fmt_ver, ver_major, ver_minor, ver_patch = struct.unpack("<IIII", buf[o : o + 16])
+        fmt_ver, ver_major, ver_minor, ver_patch = struct.unpack("<IIII", data[o : o + 16])
         o += 16
         flags = 0
         if fmt_ver >= 2:
-            flags = struct.unpack("<I", buf[o : o + 4])[0]
+            flags = struct.unpack("<I", data[o : o + 4])[0]
             o += 4
-            file_base = struct.unpack("<Q", buf[o : o + 8])[0] if fmt_ver >= 2 else 0
+            file_base = struct.unpack("<Q", data[o : o + 8])[0] if fmt_ver >= 2 else 0
             o += 8
-        file_count = struct.unpack("<I", buf[o : o + 4])[0]
+        file_count = struct.unpack("<I", data[o : o + 4])[0]
         o += 4
         ins.summary = (
             f"Godot PCK (format {fmt_ver}), engine {ver_major}.{ver_minor}.{ver_patch}, {file_count} file(s)"
         )
-        ins.add_finding("header", ins.summary, evidence=buf[:20].hex(" "))
+        ins.add_finding("header", ins.summary, evidence=data[:20].hex(" "))
         if flags & 1:
             ins.add_finding("encrypted", "PACK_DIR_ENCRYPTED flag set (directory is encrypted)")
             ins.add_limit("encrypted directories are not traversed")
@@ -55,7 +60,7 @@ class GodotPckFormat(Format):
             if o + 4 > len(data):
                 ins.add_finding("idx-truncated", f"directory truncated at file {i}")
                 break
-            path_len = struct.unpack("<I", buf[o : o + 4])[0]
+            path_len = struct.unpack("<I", data[o : o + 4])[0]
             o += 4
             if o + path_len > len(data):
                 ins.add_finding("idx-truncated", "path length overruns file")
@@ -66,23 +71,23 @@ class GodotPckFormat(Format):
             enc = {}
             for k in ("offset", "size"):
                 if fmt_ver >= 2:
-                    v = struct.unpack("<Q", buf[o : o + 8])[0]
+                    v = struct.unpack("<Q", data[o : o + 8])[0]
                     o += 8
                 else:
-                    v = struct.unpack("<I", buf[o : o + 4])[0]
+                    v = struct.unpack("<I", data[o : o + 4])[0]
                     o += 4
                 enc[k] = v
-            md5 = buf[o : o + 16].hex()
+            md5 = data[o : o + 16].hex()
             o += 16
             if fmt_ver >= 2 and (flags & 8):
                 enc["size"] = struct.unpack("<Q", buf[o : o + 8])[0]
                 o += 8
             flags2 = 0
             if fmt_ver < 2:
-                flags2 = struct.unpack("<I", buf[o : o + 4])[0]
+                flags2 = struct.unpack("<I", data[o : o + 4])[0]
                 o += 4
             elif fmt_ver >= 2:
-                flags2 = struct.unpack("<H", buf[o : o + 2])[0]
+                flags2 = struct.unpack("<H", data[o : o + 2])[0]
                 o += 2
             n += 1
             if shown < 14:

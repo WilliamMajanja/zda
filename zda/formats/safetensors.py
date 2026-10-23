@@ -15,6 +15,13 @@ class SafetensorsFormat(Format):
         if len(buf) >= 9:
             n = struct.unpack("<Q", buf[:8])[0]
             if 0 < n < 1 << 28 and buf[8:9] == b"{":
+                # avoid claiming ASAR archives (their headers contain a "files" key)
+                try:
+                    hdr = json.loads(bytes(buf[8 : 8 + min(n, 4096)]))
+                    if isinstance(hdr, dict) and "files" in hdr and "data_offsets" not in str(hdr):
+                        return 0.0
+                except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
+                    pass
                 return 1.0
         return 0.0
 
@@ -22,7 +29,13 @@ class SafetensorsFormat(Format):
         ins = Inspection(self.name)
         ins.add_limit("weights are never read or verified; only declarations from the header JSON are parsed")
         with open(path, "rb") as fh:
-            n = struct.unpack("<Q", fh.read(8))[0]
+            head = fh.read(8)
+            if len(head) < 8:
+                ins.confidence = 0.5
+                ins.summary = "truncated safetensors header"
+                ins.add_finding("header", ins.summary, evidence=buf[:16].hex(" ") if buf else "")
+                return ins
+            n = struct.unpack("<Q", head)[0]
             if n > 8 * 1024 * 1024:
                 ins.add_finding("header-error", f"header JSON of {n} bytes exceeds the 8 MiB bound")
                 ins.confidence = 0.5
@@ -33,9 +46,12 @@ class SafetensorsFormat(Format):
             except (UnicodeDecodeError, json.JSONDecodeError) as e:
                 ins.add_finding("header-error", f"header JSON decode failed: {e}")
                 return ins
-        meta = hdr.pop("__metadata__", None)
-        tensors = sorted(hdr.items())
-        dtypes = sorted({v["dtype"] for _, v in tensors})
+        if not isinstance(hdr, dict):
+            ins.add_finding("header-error", "header JSON is not an object")
+            return ins
+        meta = hdr.pop("__metadata__", None) if isinstance(hdr, dict) else None
+        tensors = sorted(hdr.items()) if isinstance(hdr, dict) else []
+        dtypes = sorted({(v.get("dtype") if isinstance(v, dict) else "?") for _, v in tensors})
         ins.summary = f"safetensors, {len(tensors)} tensor(s), dtypes: {', '.join(dtypes)}, header {n} bytes"
         ins.add_finding("header", ins.summary, evidence=f"{n}-byte header JSON at offset 8")
         if meta:
@@ -43,10 +59,14 @@ class SafetensorsFormat(Format):
         elements = 0
         byte_elems = 0
         for name, t in tensors[:64]:
-            shape = t.get("shape", [])
+            shape = t.get("shape", []) if isinstance(t, dict) else []
             n_el: int = 1
             for s in shape:
-                n_el *= s
+                try:
+                    n_el *= int(s)
+                except (TypeError, ValueError):
+                    n_el = 0
+                    break
             elements += n_el
             byte_elems += n_el * _dtype_size(t.get("dtype"))
             ins.add_finding(

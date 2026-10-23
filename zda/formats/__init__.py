@@ -15,18 +15,19 @@ from .beam import BeamFormat
 from .godot import GodotPckFormat
 from .images import PngFormat, JpegFormat, GifFormat, WebPFormat
 from .pyinst import PyInstallerFormat
+from .asar import AsarFormat
 
 _EXTRA = (
     PngFormat, JpegFormat, GifFormat, WebPFormat, PdfFormat,
     GgufFormat, SafetensorsFormat, WasmFormat, EvmFormat, BeamFormat,
-    GodotPckFormat, SqliteFormat, ZipFormat, JvmFormat, PyInstallerFormat,
+    GodotPckFormat, SqliteFormat, ZipFormat, JvmFormat, PyInstallerFormat, AsarFormat,
 )
 
 FORMATS = (
     ElfFormat, PeFormat, MachOFormat, ZipFormat, PdfFormat,
     SqliteFormat, GgufFormat, SafetensorsFormat, WasmFormat, JvmFormat,
     EvmFormat, BeamFormat, GodotPckFormat, PngFormat, JpegFormat,
-    GifFormat, WebPFormat, PyInstallerFormat,
+    GifFormat, WebPFormat, PyInstallerFormat, AsarFormat,
 )
 
 __all__ = ["FORMATS", "REGISTRY", "_EXTRA"]

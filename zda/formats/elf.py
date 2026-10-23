@@ -34,6 +34,11 @@ class ElfFormat(Format):
         with open(path, "rb") as fh:
             data = fh.read()
 
+        if len(buf) < 64 or buf[:4] != b"\x7fELF":
+            ins.confidence = 0.5
+            ins.summary = "truncated or invalid ELF header"
+            ins.add_finding("header", ins.summary, evidence=buf[:16].hex(" ") if buf else "")
+            return ins
         is64 = buf[4] == 2
         isle = buf[5] == 1
         e_type = _u16le(buf, 16)
@@ -80,6 +85,7 @@ class ElfFormat(Format):
         self._notes(ins, data, segs)
         self._imports(ins, data, sections)
         self._embedded_strings(ins, data)
+        self._toolchain(ins, data)
         return ins
 
     def _mitigations(self, ins, data, segs, e_type):
@@ -171,13 +177,28 @@ class ElfFormat(Format):
             )
             ins.add_limit("string scan is bounded to the first 256 KiB")
 
+    def _toolchain(self, ins, data):
+        low = data[: min(len(data), 1 << 20)].lower()
+        if b"go buildinf" in low or b"go1." in low:
+            import re
+            m = re.search(rb"go1\.\d+(?:\.\d+)?", data)
+            ver = m.group(0).decode("ascii", "replace") if m else "go1.x"
+            ins.add_finding("toolchain", f"Go build detected ({ver})")
+        if b"rustc" in low:
+            import re
+            m = re.search(rb"rustc [0-9.]+", data)
+            ver = m.group(0).decode("ascii", "replace") if m else "rustc"
+            ins.add_finding("toolchain", f"Rust toolchain marker present ({ver})")
+        if b"gcc" in low:
+            ins.add_finding("toolchain", "GCC toolchain marker present")
+
 
 def parse_sections(data, shoff, shnum, shentsize, is64):
     out = []
     if not shoff or shoff + 1 > len(data):
         return out
     e = shentsize or (64 if is64 else 40)
-    name_idx = _u16le(data, 0x3E)
+    name_idx = _u16le(data, 0x3E) if len(data) >= 0x40 else 0
     strtab = None
     raw = []
     for i in range(shnum):

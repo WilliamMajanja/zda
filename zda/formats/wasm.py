@@ -47,6 +47,11 @@ class WasmFormat(Format):
         ins = Inspection(self.name)
         ins.add_limit("no validation is performed; bounds checks stop parsing when truncated")
         ins.add_limit("custom sections (code bodies) are not disassembled here")
+        if len(buf) < 8:
+            ins.confidence = 0.5
+            ins.summary = "truncated WASM header"
+            ins.add_finding("header", ins.summary, evidence=buf[:8].hex(" ") if buf else "")
+            return ins
         version = struct.unpack("<I", buf[4:8])[0]
         ins.summary = f"WebAssembly module, version {version}, size {size}"
         ins.add_finding("header", ins.summary, evidence=buf[:8].hex(" "))

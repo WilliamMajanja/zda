@@ -1,7 +1,10 @@
 """SQLite: static header + schema/row counts via the stdlib sqlite3 module, no external deps."""
 
-import sqlite3
 import os
+try:
+    import sqlite3
+except Exception:  # pragma: no cover - optional stdlib component
+    sqlite3 = None
 
 from ..registry import Format, Inspection
 
@@ -12,14 +15,27 @@ class SqliteFormat(Format):
     confidence = 1.0
 
     def match(self, buf, size):
+        if sqlite3 is None:
+            return 0.0
         if buf[:16] == b"SQLite format 3\x00":
             return 1.0
         return 0.0
 
     def inspect(self, path, buf, size):
         ins = Inspection(self.name)
+        if sqlite3 is None:
+            ins.confidence = 0.5
+            ins.summary = "sqlite3 module unavailable in this Python build"
+            ins.add_finding("unavailable", ins.summary)
+            ins.add_limit("SQLite inspection requires the stdlib sqlite3 module")
+            return ins
         ins.add_limit("schema and row counts are read; row contents are intentionally not dumped")
         ins.add_limit("WAL contents are not replayed here (use replay-aware tooling for in-WAL rows)")
+        if len(buf) < 100:
+            ins.confidence = 0.5
+            ins.summary = "truncated SQLite header"
+            ins.add_finding("header", ins.summary, evidence=buf[:16].hex(" ") if buf else "")
+            return ins
         page_size_be = int.from_bytes(buf[16:18], "big")
         page_size = 65536 if page_size_be == 1 else page_size_be
         write_ver, read_ver = buf[18], buf[19]

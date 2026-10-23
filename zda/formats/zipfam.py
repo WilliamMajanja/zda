@@ -73,7 +73,15 @@ class ZipFormat(Format):
     def inspect(self, path, buf, size):
         ins = Inspection(self.name)
         ins.add_limit("inventory only; no bytecode decompilation, no manifest decryption, no on-disk extraction")
-        with zipfile.ZipFile(path) as zf:
+        try:
+            zf = zipfile.ZipFile(path)
+        except (zipfile.BadZipFile, OSError) as e:
+            ins.confidence = 0.5
+            ins.summary = f"not a readable ZIP container ({e})"
+            ins.add_finding("container", ins.summary, evidence=buf[:16].hex(" ") if buf else "")
+            ins.add_limit("file did not parse as a ZIP archive")
+            return ins
+        with zf:
             names = zf.namelist()
             kind = self._kind(zf)
             total_uncomp = sum(zi.file_size for zi in zf.infolist())

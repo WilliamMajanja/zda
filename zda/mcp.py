@@ -78,7 +78,7 @@ def _dispatch(method, params):
                 return _result(keep)
             return _result(env)
         return {"error": {"code": -32601, "message": f"unknown tool: {name}"}}
-    if method in ("ping",):
+    if method in ("ping", "shutdown", "exit"):
         return {}
     return {"error": {"code": -32601, "message": f"method not found: {method}"}}
 
@@ -102,10 +102,8 @@ def serve(args):
                 _send({"jsonrpc": "2.0", "id": mid, "error": res["error"]})
             else:
                 _send({"jsonrpc": "2.0", "id": mid, "result": (res or {})})
-        except FileNotFoundError as e:
-            _send({"jsonrpc": "2.0", "id": mid, "result": _result({"error": str(e)})})
-        except (ValueError, KeyError) as e:
-            _send({"jsonrpc": "2.0", "id": mid, "result": _result({"error": str(e)})})
+        except Exception as e:
+            _send({"jsonrpc": "2.0", "id": mid, "result": _result({"error": f"{type(e).__name__}: {e}"})})
     return 0
 
 

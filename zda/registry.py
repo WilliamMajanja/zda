@@ -94,7 +94,7 @@ def identify(path):
     if not apath.is_file():
         raise FileNotFoundError(f"no such file: {apath}")
     with open(apath, "rb") as fh:
-        buf = fh.read(_READ_SIZE)
+        buf = memoryview(fh.read(_READ_SIZE))
     size = os.path.getsize(apath)
     best, score = None, 0.0
     for cls in REGISTRY:
@@ -132,7 +132,17 @@ def inspect_file(path, fmt_name=None):
         )
         ins.add_limit("identification is signature-based; packed/obfuscated files may evade it")
         return ins.envelope(apath)
-    ins = chosen.inspect(apath, buf, size)
+    try:
+        ins = chosen.inspect(apath, buf, size)
+    except Exception as e:  # self-healing boundary: never crash the pipeline on malformed input
+        ins = Inspection(chosen.name, 0.4)
+        ins.summary = f"{chosen.name} parse error (inspector raised {type(e).__name__})"
+        ins.add_finding(
+            "parse-error",
+            f"inspector raised {type(e).__name__}: {e}",
+            evidence=f"first bytes: {buf[:16].hex(' ')}",
+        )
+        ins.add_limit("input may be malformed or truncated; only partial findings are available")
     if not ins.summary:
         ins.summary = f"{chosen.name} file, no summary available"
     return ins.envelope(apath)

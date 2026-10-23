@@ -75,6 +75,11 @@ class GgufFormat(Format):
         ins = Inspection(self.name)
         ins.add_limit("weights are never read or verified; only header declarations are walked")
         ins.add_limit("metadata arrays longer than the bound are skipped, not enumerated")
+        if len(buf) < 24:
+            ins.confidence = 0.5
+            ins.summary = "truncated GGUF header"
+            ins.add_finding("header", ins.summary, evidence=buf[:16].hex(" ") if buf else "")
+            return ins
         with open(path, "rb") as fh:
             version, ntensors, nkvs = struct.unpack("<IQQ", buf[4:24])
             ins.summary = f"GGUF v{version}, {ntensors} tensor(s), {nkvs} metadata kv(s)"

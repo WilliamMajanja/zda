@@ -35,6 +35,11 @@ class MachOFormat(Format):
         ins.add_limit("static inspection only; no jailbreak/device checks, no symbolication")
         with open(path, "rb") as fh:
             data = fh.read()
+        if len(data) < 32 or len(buf) < 4:
+            ins.confidence = 0.5
+            ins.summary = "truncated Mach-O header"
+            ins.add_finding("header", ins.summary, evidence=buf[:16].hex(" ") if buf else "")
+            return ins
         magic = int.from_bytes(buf[:4], "little")
         if magic in (FAT_MAGIC, FAT_CIGAM):
             return self._fat(ins, data)
@@ -42,6 +47,10 @@ class MachOFormat(Format):
         return self._thin(ins, data, order)
 
     def _thin(self, ins, data, order):
+        if len(data) < 32:
+            ins.confidence = 0.5
+            ins.summary = "truncated Mach-O thin header"
+            return ins
         cputype, cpusub = struct.unpack(f"{order}II", data[4:12])
         filetype = struct.unpack(f"{order}I", data[12:16])[0]
         ncmds = struct.unpack(f"{order}I", data[16:20])[0]
@@ -78,9 +87,18 @@ class MachOFormat(Format):
         if dylibs:
             ins.add_finding("dylibs", f"{len(dylibs)} linked library/libraries",
                             evidence=", ".join(dylibs[:8]))
+        low = data[: min(len(data), 1 << 20)].lower()
+        if b"go buildinf" in low or b"go1." in low:
+            ins.add_finding("toolchain", "Go build detected")
+        if b"rustc" in low:
+            ins.add_finding("toolchain", "Rust toolchain marker present")
         return ins
 
     def _fat(self, ins, data):
+        if len(data) < 8:
+            ins.confidence = 0.5
+            ins.summary = "truncated Mach-O fat header"
+            return ins
         nfat = struct.unpack(">I", data[4:8])[0]
         archs = []
         o = 8
